@@ -2,6 +2,9 @@
 
 Native IntelliJ integration for [Jujutsu (jj)](https://jj-vcs.github.io/jj/), a Git-compatible version control system built around a fundamentally different workflow: your working copy is always a commit.
 
+> **This is the [watbe/jj-idea](https://github.com/watbe/jj-idea) fork** of [kkkev/jj-idea](https://github.com/kkkev/jj-idea).
+> See [Maintaining this fork](#maintaining-this-fork) for how to install its builds and how to bring in upstream changes.
+
 ![Custom log view with commit graph and tooltip](docs/images/log-light-with-tooltip.png)
 
 ## Features
@@ -105,3 +108,121 @@ See **[ROADMAP.md](ROADMAP.md)** for planned features, including hunk-level squa
 ## License
 
 [Apache License 2.0](LICENSE)
+
+## Maintaining this fork
+
+This fork keeps a small stack of its own commits on top of upstream's `master`, and publishes
+its own releases so they can be installed alongside upstream's update channel. This section is
+at the end of the file on purpose: upstream rarely edits here, so rebases rarely conflict on it.
+
+### Installing fork builds
+
+In IntelliJ IDEA: **Settings → Plugins → ⚙️ → Manage Plugin Repositories**, and add
+`https://raw.githubusercontent.com/watbe/jj-idea/master/updatePlugins.xml` in place of
+upstream's URL. The plugin ID is the same as upstream's, so a fork build replaces the upstream
+plugin. The fork's releases are also on [its Releases page](https://github.com/watbe/jj-idea/releases).
+
+### The fork's commits
+
+The commits on top of upstream fall into three groups. Their SHAs change on every rebase, so
+find them by subject (`git log --oneline upstream/master..master`):
+
+| Commit | Keep while… |
+|---|---|
+| Fixes not yet upstream (e.g. "Render image/binary diffs natively instead of as decoded text") | …upstream hasn't merged an equivalent fix |
+| "Make the Build and Release workflow work on forks" | …the fork publishes its own releases |
+| "Point updatePlugins.xml at the watbe fork's releases" and CI's "Update plugin repository for release v…" commits | Optional: CI rewrites `updatePlugins.xml` on every fork release anyway |
+
+### Version numbering
+
+Fork releases are named `<upstream version>.<n>`. For example, `v0.8.17.1` is the first fork
+release on top of upstream's 0.8.17, and on top of 0.8.18 the next would be `v0.8.18.1`.
+IntelliJ ranks that above the upstream release it's based on, and below upstream's next
+release, so an upstream release that includes the fork's fixes still reaches the IDE as an update.
+
+**Don't use the workflow's version-bump option** ("Run workflow" with patch/minor/major). It
+would publish a version such as `0.8.19`, which clashes with an upstream release, and it
+rewrites `CHANGELOG.md` on `master`. Running it with the bump left empty just makes a
+snapshot build, which is harmless.
+
+### One-time setup
+
+```bash
+git remote add upstream https://github.com/kkkev/jj-idea.git
+```
+
+Never run `git push --tags` to `origin`. Upstream's `v*` tags would trigger the fork's
+release workflow. CI already fetches upstream's tags into its own clone when it needs them.
+
+### Integrating upstream changes
+
+1. **Fetch and rebase** the fork's commits onto upstream:
+
+   ```bash
+   git switch master
+   git pull --ff-only origin master   # pick up CI's updatePlugins.xml commits first
+   git fetch upstream --tags
+   git rebase upstream/master
+   ```
+
+   Git skips any fork commit that upstream has since merged identically. If upstream merged
+   an *equivalent* but different fix, drop the fork's version when it conflicts
+   (`git rebase --skip`).
+
+2. **Resolve conflicts.** During a rebase, `--ours` is upstream (the base being rebased
+   onto) and `--theirs` is the fork commit being replayed:
+   - **`updatePlugins.xml`**: keep the fork's version (`git checkout --theirs updatePlugins.xml`).
+     Upstream's CI regenerates this file on every upstream release, so it conflicts often.
+   - **`CHANGELOG.md`**: keep upstream's released sections exactly as they are, and put the
+     fork's entries back under `## [Unreleased]`. Never add an entry under a heading upstream
+     has already released: `ChangelogReleaseDriftTest` fails on that.
+   - **`.github/workflows/build.yml`**: take upstream's changes, then check that every
+     fork-specific branch still exists (`grep -n UPSTREAM_REPOSITORY .github/workflows/build.yml`):
+     the tag fetch, the preview-key condition, the updatePlugins.xml URLs, and the Marketplace guards.
+
+   Then run `git add <files>` and `git rebase --continue`.
+
+3. **Check the result** locally:
+
+   ```bash
+   ./gradlew check
+   ./gradlew contractTest   # needs jj on PATH; runs the fork's real-jj tests too
+   ```
+
+4. **Push.** A rebase rewrites `master`, so it needs a force-push. `--force-with-lease`
+   refuses if CI pushed to `master` since your last fetch:
+
+   ```bash
+   git push --force-with-lease origin master
+   ```
+
+   Older fork tags stay valid: they keep pointing at their original commits.
+
+5. **Wait for CI to pass on `master`** (`gh run list --repo watbe/jj-idea --branch master`)
+   before tagging. The `compat` job tests the supported IDE versions, and `verify` runs
+   the plugin verifier.
+
+### Publishing a fork release
+
+```bash
+git tag -a v0.8.18.1 -m "v0.8.18.1 (watbe fork)"
+git push origin v0.8.18.1
+```
+
+Pushing the tag runs the release. If no run starts, trigger one on the tag:
+`gh workflow run build.yml --repo watbe/jj-idea --ref v0.8.18.1`. The run then does four things:
+- builds the plugin, without the upstream-only preview-code key;
+- creates the GitHub Release with the zip;
+- uses `## [Unreleased]` from `CHANGELOG.md` as the release notes, because fork tags have no section of their own;
+- regenerates `updatePlugins.xml` to point at the release and pushes that to `master`.
+
+It never publishes to the JetBrains Marketplace. Afterwards, run `git pull --ff-only origin master`
+so your local `master` has CI's commit.
+
+### When upstream has everything
+
+Once upstream has merged all of the fork's fixes, there's nothing left to publish. Switch
+the IDE's plugin repository back to
+`https://raw.githubusercontent.com/kkkev/jj-idea/master/updatePlugins.xml`. Upstream's next
+release then shows up as an ordinary update, because it ranks above every `x.y.z.n` fork build
+of an earlier upstream version.
