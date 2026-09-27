@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugins>
-  <plugin id="in.kkkev.jj-idea" url="https://github.com/kkkev/jj-idea/releases/download/v0.8.17/jj-idea-0.8.17.zip" version="0.8.17">
+  <plugin id="in.kkkev.jj-idea" url="https://github.com/watbe/jj-idea/releases/download/v0.8.17.1/jj-idea-0.8.17.1.zip" version="0.8.17.1">
     <idea-version since-build="251.0" />
-    <name>Jujutsu VCS Integration</name>
+    <name>Jujutsu VCS Integration (watbe fork)</name>
     <description><![CDATA[
+      <p><b>Fork build</b> of <a href="https://github.com/kkkev/jj-idea">kkkev/jj-idea</a> from <a href="https://github.com/watbe/jj-idea">watbe/jj-idea</a>, for testing fixes ahead of an upstream release.</p>
+
       <p>Native IntelliJ integration for <a href="https://jj-vcs.github.io/jj/">Jujutsu (jj)</a>, a Git-compatible version control system with a fundamentally different approach to working with code.</p>
 
       <h3>Why Jujutsu?</h3>
@@ -19,31 +21,16 @@
           <li><b>Real-Time Status</b> — Auto-refresh keeps the UI in sync as you edit files.</li>
       </ul>
 
-      <p><a href="https://github.com/kkkev/jj-idea">GitHub</a> · <a href="https://github.com/kkkev/jj-idea/issues">Issues</a></p>
+      <p><a href="https://github.com/kkkev/jj-idea">Upstream GitHub</a> · <a href="https://github.com/watbe/jj-idea">Fork</a> · <a href="https://github.com/kkkev/jj-idea/issues">Issues</a></p>
     ]]></description>
     <vendor email="jj-idea@kkkev.in" url="https://github.com/kkkev/jj-idea">Kevin Thomas</vendor>
     <change-notes><![CDATA[
-      <h3>0.8.17</h3>
-      
-<h4>Added</h4>
-<li>Restore now opens a dialog listing every changed file, with your selection pre-checked but adjustable, instead of a plain Yes/No confirmation — applies to both "Restore" (working copy → parent revision) and "Restore to This" (working copy → a historical revision). A successful restore also now shows an undo balloon with an inline Undo link. ([#84](https://github.com/kkkev/jj-idea/issues/84))</li>
-<li>New "Move Up"/"Move Down" actions swap the selected commit with its single child or single parent in the commit graph (`jj rebase -A`/`-B`), as a keyboard-first complement to drag-and-drop reordering. Default shortcut Ctrl+Shift+Up/Down on every platform, including macOS - Cmd+Shift+Up/Down is deliberately not used there, since it's already the system shortcut for extending a selection to the top/bottom of a list; also in the log's right-click menu next to Rebase. Disabled when the selection isn't a single commit, doesn't have exactly one child/parent on that side, or the move would touch an immutable commit. ([#93](https://github.com/kkkev/jj-idea/issues/93))</li>
-<li>The conflicted-file editor banner now reflects jj's own incremental conflict model instead of a static "This file has merge conflicts": it shows a live count of remaining conflict blocks that updates as you hand-edit the markers (and disappears once the last one is gone, without waiting for a save), and offers "Accept <side>" links labelled with jj's own commit descriptions for each side, alongside the existing "Open Merge Tool" link. ([#112](https://github.com/kkkev/jj-idea/issues/112))</li>
-<li>Visible heads with no bookmark on them — work left behind after a forgotten `jj bookmark advance` — are now surfaced instead of silently sitting unnoticed: the bookmarks panel gets a collapsible "Unbookmarked heads" category (below the "@" row, above Local) listing each one as "\<closest bookmark\> +n \<change id\>", double-clickable to jump the log there, and the log table itself marks each such row with a small slashed-bookmark icon. ([#48](https://github.com/kkkev/jj-idea/issues/48), [#107](https://github.com/kkkev/jj-idea/issues/107))</li>
-
-<h4>Changed</h4>
-<li>The Working Copy tool window now has an icon representing a working copy rather than IntelliJ's default VCS icon ([#101](https://github.com/kkkev/jj-idea/issues/101))</li>
+      <h3>0.8.17.1 (watbe fork)</h3>
+      <p>Built from the fork's master: everything in upstream's 0.8.17 and its unreleased changes since, plus:</p>
 
 <h4>Fixed</h4>
-<li>Restore, Show File History, Squash Selected Files, and Split no longer hide themselves for a deleted file selected alone in the Working Copy panel or a commit's changed-files list — a deleted file has no editor-visible content, and that was mistaken for "nothing selected". A selection mixing a deleted file with an edited one now restores both instead of silently dropping the deleted one. ([#122](https://github.com/kkkev/jj-idea/issues/122))</li>
-<li>The bookmark widget's/bookmarks panel's "\<name\> +N" indicator could show a wildly inflated (or capped, e.g. "+1000+") distance for a merge commit with one bookmarked parent and one unrelated, unbookmarked parent — it was counting the entire unrelated branch's history instead of the actual hops back to the bookmark.</li>
-<li>Scrolling the (early-access) paged log through a large repo's history got progressively slower the deeper you scrolled — each "Load more" page re-sorted and re-laid-out the entire log loaded so far, not just the new page, turning a scroll to depth N into roughly N² work. Loading a page now extends the previous merge/layout instead of recomputing it from scratch, so a long scroll costs roughly the same total work regardless of how many pages came before. ([#69](https://github.com/kkkev/jj-idea/issues/69))</li>
-<li>A divergent (conflicted) local bookmark couldn't be moved back onto the change it was already on — the natural way to resolve it — from either "Move Bookmark Here…" or "Move '\<bookmark\>' to Change…"; both dialogs assumed a bookmark has exactly one current target and excluded or misclassified it whenever a candidate matched. Every target is now offered, labelled "Resolve conflict", and selectable without ticking "Allow backward or sideways move". "Move '\<bookmark\>' to Change…" also now shows an undo balloon and supports Undo after a move, matching every other bookmark-move path. ([#121](https://github.com/kkkev/jj-idea/issues/121))</li>
-<li>A bookmark whose local ref was pending deletion (`jj bookmark delete`) but whose remote-tracking ref still existed could show a wildly wrong ahead count (e.g. "1000+ commits ahead") in the bookmarks panel — jj reports that count as the distance from the now-absent local ref to the repo root, not a real divergence. The log table already corrected this; the bookmarks panel, and every log-table refresh path past the very first load (paging, Refresh, search), now do too. ([#110](https://github.com/kkkev/jj-idea/issues/110))</li>
-<li>Toolbar Refresh now also re-reads bookmarks, tags, and working-copy state, not just log rows — previously an external change picked up only by the (unreliable on some network drives) op_heads file watch could leave the bookmark widget, bookmark chips, and reference filter stale even after clicking Refresh. ([#115](https://github.com/kkkev/jj-idea/issues/115))</li>
-<li>A conflicted file at a historical (non-working-copy) commit whose path contained a space was silently missing its conflict marker in that commit's changes list — the underlying `jj resolve --list` parser now reuses the same shape-aware parser as the working copy instead of a whitespace-splitting one, and populates the conflict registry for that revision too (laying groundwork for a future revision-aware conflicts view).</li>
-<li>Split's dialog now names the two resulting sides by what they *are* — "Existing commit"/"New commit" — consistently across the description labels, diff preview titles, summary line, and hunk picker, instead of a mix of DAG position ("Parent"/"Child"/"First"/"Second"/"Here") and a mismatched "(keeps change ID)" aside that only appeared on one of them; ticking a file now has the same meaning everywhere. The previous separate bold identity header and plain description sub-label above each description editor are combined into one label ("Description for existing commit (`<id>`)" / "Description for new commit (child of / sibling of / parent of `<id>`)"), dropping the redundant "(unchanged unless edited)" aside. A muted note under "Source" states the resulting shape, leading with the same "existing commit" naming, including that existing children become merges of both siblings in a parallel split, and word-wraps instead of forcing the dialog's left column wider. Every change id shown in these labels now uses the same bold-prefix/grey-remainder styling as the rest of the plugin. Toggling "Create parallel commits" also now relabels the description labels, note, and summary immediately, instead of only on the next file-tick. ([#101](https://github.com/kkkev/jj-idea/issues/101), [#114](https://github.com/kkkev/jj-idea/issues/114))</li>
-      <p>See <a href="https://github.com/kkkev/jj-idea/releases/tag/v0.8.17">full release notes</a> for details.</p>
+<li>Diffs of images (PNG, JPEG, etc.) and other binary files from a historical commit now open in IntelliJ's native image/binary diff viewer instead of showing the file's bytes decoded as garbled text. File history's "open revision" views now get the exact bytes too.</li>
+      <p>See <a href="https://github.com/watbe/jj-idea/releases/tag/v0.8.17.1">fork release notes</a> for details.</p>
     ]]></change-notes>
   </plugin>
 </plugins>
