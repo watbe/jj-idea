@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Diffs of images (PNG, JPEG, etc.) and other binary files from a historical commit now open in IntelliJ's native image/binary diff viewer instead of showing the file's bytes decoded as garbled text — file content from jj is now kept as raw bytes until the IDE decides whether it's text or binary. File history's "open revision" views, which went through the same lossy text decoding, now get the exact bytes too.
+
 ## [0.8.18] - 2026-09-27
 
 ### Added
