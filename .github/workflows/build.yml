@@ -21,6 +21,13 @@ on:
 permissions:
   contents: write
 
+env:
+  # The canonical repository. Runs anywhere else (a fork) fetch this repo's release tags for
+  # version calculation and ChangelogReleaseDriftTest, build releases without the preview-code
+  # key (a fork doesn't have that secret), never publish to JetBrains Marketplace, and generate
+  # updatePlugins.xml pointing at their own releases.
+  UPSTREAM_REPOSITORY: kkkev/jj-idea
+
 jobs:
   changelog-check:
     # Check that changelog is updated when source code changes
@@ -98,6 +105,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # tags needed by ChangelogReleaseDriftTest (jj-idea-j8s6)
+
+      # A fork has none of upstream's release tags unless they were pushed to it explicitly.
+      # Fetch them into this runner's clone only - nothing is pushed, so no tag-push releases
+      # are triggered.
+      - name: Fetch upstream release tags (forks only)
+        if: github.repository != env.UPSTREAM_REPOSITORY
+        run: git fetch --no-tags "https://github.com/${UPSTREAM_REPOSITORY}.git" '+refs/tags/v*:refs/tags/v*'
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -178,6 +192,13 @@ jobs:
         with:
           fetch-depth: 0  # Fetch all history for version calculation
 
+      # A fork has none of upstream's release tags unless they were pushed to it explicitly.
+      # Fetch them into this runner's clone only - nothing is pushed, so no tag-push releases
+      # are triggered.
+      - name: Fetch upstream release tags (forks only)
+        if: github.repository != env.UPSTREAM_REPOSITORY
+        run: git fetch --no-tags "https://github.com/${UPSTREAM_REPOSITORY}.git" '+refs/tags/v*:refs/tags/v*'
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -199,7 +220,7 @@ jobs:
             fi
             # Parse version components
             LATEST_VERSION=${LATEST_TAG#v}
-            IFS='.' read -r MAJOR MINOR PATCH <<< "$LATEST_VERSION"
+            IFS='.' read -r MAJOR MINOR PATCH _ <<< "$LATEST_VERSION"
 
             # Bump based on input
             case "${{ inputs.bump }}" in
@@ -228,7 +249,7 @@ jobs:
             # Development build: use snapshot version based on latest tag
             LATEST_TAG=$(git tag -l 'v*' | sort -V | tail -1)
             LATEST_VERSION=${LATEST_TAG#v}
-            IFS='.' read -r MAJOR MINOR PATCH <<< "$LATEST_VERSION"
+            IFS='.' read -r MAJOR MINOR PATCH _ <<< "$LATEST_VERSION"
             VERSION="${MAJOR}.${MINOR}.${{ github.run_number }}-SNAPSHOT"
             IS_RELEASE=false
           fi
@@ -252,8 +273,10 @@ jobs:
         # local dev build - only the legacy access-codes.txt path works there. See
         # generatePreviewCodeKey in build.gradle.kts. The Marketplace publish step further down
         # rebuilds the plugin and needs the same key + flag (jj-idea-cxg5).
+        # A fork has no PREVIEW_CODE_KEY secret, so its releases build without it, like any local
+        # dev build (JJP1 codes don't validate there).
         run: |
-          if [ "${{ steps.version.outputs.is_release }}" = "true" ]; then
+          if [ "${{ steps.version.outputs.is_release }}" = "true" ] && [ "${{ github.repository }}" = "$UPSTREAM_REPOSITORY" ]; then
             PREVIEW_CODE_KEY="${{ secrets.PREVIEW_CODE_KEY }}" ./gradlew buildPlugin -PrequirePreviewCodeKey
           else
             ./gradlew buildPlugin
@@ -290,6 +313,17 @@ jobs:
             found && /^\[.+\]:/ { exit }
             found { print }
           ' CHANGELOG.md)
+
+          # A fork's tag (e.g. v0.8.17.1) has no CHANGELOG section of its own; fall back to
+          # [Unreleased], which is what that build actually contains beyond upstream's release.
+          if [[ -z "${NOTES//[[:space:]]/}" && "$TARGET_SECTION" != "Unreleased" ]]; then
+            NOTES=$(awk '
+              $0 ~ "^## \\[Unreleased\\]" { found=1; next }
+              found && /^## \[/ { exit }
+              found && /^\[.+\]:/ { exit }
+              found { print }
+            ' CHANGELOG.md)
+          fi
 
           echo "notes<<EOF" >> $GITHUB_OUTPUT
           echo "$NOTES" >> $GITHUB_OUTPUT
@@ -374,6 +408,14 @@ jobs:
           CHANGE_NOTES: ${{ steps.changelog.outputs.notes }}
         run: |
           PLUGIN_FILE="jj-idea-${VERSION}.zip"
+          REPO_URL="${{ github.server_url }}/${{ github.repository }}"
+          if [ "${{ github.repository }}" = "$UPSTREAM_REPOSITORY" ]; then
+            NAME_SUFFIX=""
+            FORK_NOTE=""
+          else
+            NAME_SUFFIX=" (${{ github.repository_owner }} fork)"
+            FORK_NOTE="<p><b>Fork build</b> of <a href=\"https://github.com/${UPSTREAM_REPOSITORY}\">${UPSTREAM_REPOSITORY}</a> from <a href=\"${REPO_URL}\">${{ github.repository }}</a>.</p>"
+          fi
 
           # Convert markdown to basic HTML (safely via env var)
           CHANGE_NOTES_HTML=$(echo "$CHANGE_NOTES" | sed 's/^### \(.*\)$/<h4>\1<\/h4>/g' | sed 's/^- \(.*\)$/<li>\1<\/li>/g' | sed 's/^$//g')
@@ -381,10 +423,11 @@ jobs:
           cat > updatePlugins.xml << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <plugins>
-            <plugin id="in.kkkev.jj-idea" url="https://github.com/kkkev/jj-idea/releases/download/${TAG_NAME}/${PLUGIN_FILE}" version="${VERSION}">
+            <plugin id="in.kkkev.jj-idea" url="${REPO_URL}/releases/download/${TAG_NAME}/${PLUGIN_FILE}" version="${VERSION}">
               <idea-version since-build="251.0" />
-              <name>Jujutsu VCS Integration</name>
+              <name>Jujutsu VCS Integration${NAME_SUFFIX}</name>
               <description><![CDATA[
+                ${FORK_NOTE}
                 <p>Native IntelliJ integration for <a href="https://jj-vcs.github.io/jj/">Jujutsu (jj)</a>, a Git-compatible version control system with a fundamentally different approach to working with code.</p>
 
                 <h3>Why Jujutsu?</h3>
@@ -406,7 +449,7 @@ jobs:
               <change-notes><![CDATA[
                 <h3>${VERSION}</h3>
                 ${CHANGE_NOTES_HTML}
-                <p>See <a href="https://github.com/kkkev/jj-idea/releases/tag/${TAG_NAME}">full release notes</a> for details.</p>
+                <p>See <a href="${REPO_URL}/releases/tag/${TAG_NAME}">full release notes</a> for details.</p>
               ]]></change-notes>
             </plugin>
           </plugins>
@@ -425,7 +468,7 @@ jobs:
       # Requires PUBLISH_TOKEN secret from JetBrains Hub (hub.jetbrains.com → Profile → Tokens)
       # Optional: CERTIFICATE_CHAIN, PRIVATE_KEY, PRIVATE_KEY_PASSWORD for plugin signing
       - name: Publish to JetBrains Marketplace
-        if: steps.version.outputs.is_release == 'true' && env.PUBLISH_TOKEN != ''
+        if: steps.version.outputs.is_release == 'true' && env.PUBLISH_TOKEN != '' && github.repository == env.UPSTREAM_REPOSITORY
         env:
           PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
           CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
@@ -461,7 +504,7 @@ jobs:
       # discovered "yet again" later. 30576 is this plugin's numeric Marketplace ID (see
       # https://plugins.jetbrains.com/plugin/30576), distinct from its xmlId (in.kkkev.jj-idea).
       - name: Verify JetBrains Marketplace approval
-        if: steps.version.outputs.is_release == 'true' && env.PUBLISH_TOKEN != ''
+        if: steps.version.outputs.is_release == 'true' && env.PUBLISH_TOKEN != '' && github.repository == env.UPSTREAM_REPOSITORY
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
